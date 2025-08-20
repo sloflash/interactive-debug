@@ -136,8 +136,9 @@ def install_package():
     """Install progressive-ml-dev package"""
     print("📦 Installing progressive-ml-dev...")
     
-    # Try pip install
-    success, stdout, stderr = run_command("python3 -m pip install --user progressive-ml-dev", check=False)
+    # Use the same Python interpreter that's running this script
+    python_cmd = sys.executable
+    success, stdout, stderr = run_command(f"{python_cmd} -m pip install --user progressive-ml-dev", check=False)
     
     if success:
         print("✅ Package installed successfully")
@@ -154,8 +155,9 @@ def run_setup():
     success, stdout, stderr = run_command("claude-repl setup", check=False)
     
     if not success:
-        # Try python module
-        success, stdout, stderr = run_command("python3 -m progressive_ml_dev.cli setup", check=False)
+        # Try with the same Python interpreter that's running this script
+        python_cmd = sys.executable
+        success, stdout, stderr = run_command(f"{python_cmd} -m progressive_ml_dev.cli setup", check=False)
     
     if success:
         print("✅ Setup completed")
@@ -172,8 +174,9 @@ def run_tests():
     success, stdout, stderr = run_command("claude-repl test", check=False)
     
     if not success:
-        # Try python module
-        success, stdout, stderr = run_command("python3 -m progressive_ml_dev.cli test", check=False)
+        # Try with the same Python interpreter
+        python_cmd = sys.executable
+        success, stdout, stderr = run_command(f"{python_cmd} -m progressive_ml_dev.cli test", check=False)
     
     if success:
         print("✅ All tests passed")
