@@ -41,4 +41,9 @@ Both you and I can observe the same execution environment simultaneously.
 # Model stays loaded for iterative debugging
 ```
 
-Execute the requested $ARGUMENTS command now using the appropriate `claude-repl` command.
+Execute the requested $ARGUMENTS command using `claude-repl $ARGUMENTS`.
+
+If claude-repl is not found, the system needs to be installed first:
+```bash
+curl -sSL https://raw.githubusercontent.com/sloflash/interactive-debug/main/src/install_universal.py | python3
+```
