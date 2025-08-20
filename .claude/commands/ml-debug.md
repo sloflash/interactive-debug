@@ -29,4 +29,9 @@ The user is experiencing: $ARGUMENTS
 - Model architecture experiments
 - Data loading issues
 
-Start the interactive session now and begin collaborative ML debugging for: $ARGUMENTS
+Start the interactive session using `claude-repl start` and begin collaborative ML debugging for: $ARGUMENTS
+
+If claude-repl command is not found, install the system:
+```bash
+curl -sSL https://raw.githubusercontent.com/sloflash/interactive-debug/main/src/install_universal.py | python3
+```

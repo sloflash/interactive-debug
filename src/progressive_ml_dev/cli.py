@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 class ProgressiveMLCLI:
-    def __init__(self, session_name="claude", venv_path=None):
+    def __init__(self, session_name="claude", venv_path=None, interactive_delay=5):
         self.session_name = session_name
         self.venv_path = venv_path
         self.session_dir = Path("/tmp/claude_session")
@@ -23,8 +23,9 @@ class ProgressiveMLCLI:
         self.session_dir.mkdir(exist_ok=True)
         self.config_dir = Path.home() / ".claude"
         self.paused = False
+        self.interactive_delay = interactive_delay
     
-    def _run_tmux(self, cmd):
+    def _run_tmux(self, cmd, apply_delay=False):
         """Run tmux command and return result"""
         try:
             result = subprocess.run(
@@ -33,6 +34,9 @@ class ProgressiveMLCLI:
                 text=True, 
                 check=True
             )
+            # Apply delay for interactive commands if requested
+            if apply_delay and self.interactive_delay > 0:
+                time.sleep(self.interactive_delay)
             return result.stdout.strip(), result.stderr.strip()
         except subprocess.CalledProcessError as e:
             return None, e.stderr.strip()
@@ -230,7 +234,7 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         print(f"Send commands with: claude-repl send \"your_code\"")
         return True
     
-    def send(self, command, wait_time=1.0):
+    def send(self, command, wait_time=None):
         """Send command to the session"""
         if not self._session_exists():
             print(f"❌ Session '{self.session_name}' not found. Start with: claude-repl start")
@@ -242,13 +246,13 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
             print("Session is PAUSED. Use 'claude-repl resume' to continue or 'claude-repl send --force' to override")
             return False
         
-        # Send command to tmux session
+        # Send command to tmux session with automatic delay
         stdout, stderr = self._run_tmux([
             "send-keys", 
             "-t", self.session_name,
             command,
             "Enter"
-        ])
+        ], apply_delay=True)
         
         if stdout is None:
             print(f"❌ Failed to send command: {stderr}")
@@ -256,8 +260,8 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         
         print(f"📤 Sent: {command}")
         
-        # Wait for command to execute (replace tmux sleep with Python sleep)
-        if wait_time > 0:
+        # Additional wait time if specified (on top of interactive delay)
+        if wait_time is not None and wait_time > 0:
             time.sleep(wait_time)
         
         return True
@@ -566,10 +570,10 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
         print("Available Commands:")
         print("  setup                        # One-time system setup")
         print("  install                      # Install slash commands in current project")
-        print("  start [--venv PATH]          # Start persistent Python session")
+        print("  start [--venv PATH] [--delay SECONDS]  # Start persistent Python session")
         print("  stop                         # Stop session")
-        print("  send \"command\"               # Send Python code to session")
-        print("  send --force \"command\"       # Send even if paused")
+        print("  send \"command\" [--delay SECONDS]      # Send Python code to session")
+        print("  send --force \"command\" [--delay SECONDS]  # Send even if paused")
         print("  read [lines]                 # Read session output")
         print("  status                       # Check session health")
         print("  pause                        # Pause session (Claude won't send commands)")
@@ -577,8 +581,13 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
         print("  attach                       # Show monitoring instructions")
         print("  help                         # Show this help")
         print()
+        print("Interactive Delay Support:")
+        print("  --delay 5                    # 5 second pause after each send command (default)")
+        print("  --delay 3                    # 3 second pause after each send command")
+        print("  --delay 0                    # No automatic delay")
+        print()
         print("Virtual Environment Support:")
-        print("  claude-repl start --venv ~/myproject/.venv")
+        print("  claude-repl start --venv ~/myproject/.venv --delay 3")
         print("  claude-repl start --venv /path/to/venv")
         print()
         print("Session Control:")
@@ -665,7 +674,27 @@ def main():
         return
     
     command = sys.argv[1]
-    cli = ProgressiveMLCLI()
+    
+    # Parse global options
+    interactive_delay = 5  # default
+    args = sys.argv[2:]
+    
+    # Look for --delay parameter anywhere in args
+    delay_idx = None
+    for i, arg in enumerate(args):
+        if arg == "--delay" and i + 1 < len(args):
+            try:
+                interactive_delay = float(args[i + 1])
+                delay_idx = i
+                break
+            except ValueError:
+                print("Invalid delay value. Using default 5 seconds.")
+    
+    # Remove --delay and its value from args
+    if delay_idx is not None:
+        args = args[:delay_idx] + args[delay_idx + 2:]
+    
+    cli = ProgressiveMLCLI(interactive_delay=interactive_delay)
     
     if command == "setup":
         cli.setup()
@@ -673,26 +702,26 @@ def main():
         cli.install()
     elif command == "start":
         venv_path = None
-        if len(sys.argv) > 2 and sys.argv[2] == "--venv":
-            if len(sys.argv) < 4:
-                print("Usage: claude-repl start --venv /path/to/venv")
+        if len(args) > 0 and args[0] == "--venv":
+            if len(args) < 2:
+                print("Usage: claude-repl start --venv /path/to/venv [--delay seconds]")
                 return
-            venv_path = sys.argv[3]
+            venv_path = args[1]
         cli.start(venv_path)
     elif command == "send":
-        if len(sys.argv) < 3:
-            print("Usage: claude-repl send \"command\" or claude-repl send --force \"command\"")
+        if len(args) < 1:
+            print("Usage: claude-repl send \"command\" [--delay seconds] or claude-repl send --force \"command\" [--delay seconds]")
             return
         
-        if sys.argv[2] == "--force":
-            if len(sys.argv) < 4:
-                print("Usage: claude-repl send --force \"command\"")
+        if args[0] == "--force":
+            if len(args) < 2:
+                print("Usage: claude-repl send --force \"command\" [--delay seconds]")
                 return
-            cli.force_send(sys.argv[3])
+            cli.force_send(args[1])
         else:
-            cli.send(sys.argv[2])
+            cli.send(args[0])
     elif command == "read":
-        lines = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+        lines = int(args[0]) if len(args) > 0 else 50
         output = cli.read(lines)
         print(output)
     elif command == "status":

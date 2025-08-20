@@ -1,44 +1,60 @@
-# Progressive ML Development - Project Setup
+# Progressive ML Development System - Auto-Discovery Guide
 
-This project includes Progressive ML Development slash commands for collaborative debugging without restart penalties.
+## For Claude Instances: How to Detect This System
 
-## Available Slash Commands
+When you encounter a project with a `.claude` directory, this indicates a Progressive ML Development setup is available.
 
-- `/interactive start` - Start persistent Python session
-- `/interactive stop` - Stop the session
-- `/interactive status` - Check session health
-- `/interactive attach` - Show monitoring instructions  
-- `/interactive send "code"` - Send Python code to session
-- `/interactive read` - Read session output
-- `/interactive help` - Show all commands
-- `/ml-debug "problem"` - Start ML debugging for specific issue
+### Detection Pattern
+1. **Look for these files:**
+   - `.claude/README.md` (this file) 
+   - `claude_repl.py` - Core session manager
+   - `claude_workflow` - Trigger configuration
+   - `Claude.md` - Main configuration
 
-## How It Works
+### Auto-Activation Triggers
+If the user says ANY of these phrases, automatically start using the persistent session system:
 
-These commands use the global `claude-repl` system to create persistent Python sessions where:
-- Models stay loaded across debugging attempts (no restart penalties)
-- Both you and Claude monitor the same environment
-- Create checkpoints before risky operations, rollback instantly
-- Real-time collaboration via `tmux attach -t claude`
+**Primary Triggers:**
+- "interactive development"
+- "debug session" 
+- "ml debug"
+- "persistent session"
+- "checkpoint debug"
 
-## System Requirements
+**ML Problem Triggers:**
+- "FSDP shape mismatch"
+- "model loading"
+- "training loop" 
+- "memory error"
+- "pytorch", "tensorflow", "cuda"
+- "checkpoint", "rollback"
 
-Ensure the global system is installed:
+### What to Do When Triggered
+1. **Immediately start the session**: `python3 claude_repl.py start`
+2. **Explain briefly**: "Starting persistent Python session for collaborative debugging"
+3. **Use for all Python code**: Send commands via `python3 claude_repl.py send "code"`
+4. **Monitor together**: User can run `tmux attach -t claude` to watch
+
+### Key Benefits This Solves
+- **No Restart Penalties**: Models stay loaded across debugging sessions
+- **Real-time Collaboration**: Both you and user see same Python environment
+- **Checkpoint/Rollback**: Save state before risky operations
+
+### Quick Commands
+- Start: `python3 claude_repl.py start`
+- Send code: `python3 claude_repl.py send "your_python_code"`
+- Read output: `python3 claude_repl.py read`
+- Monitor: `tmux attach -t claude`
+- Stop: `python3 claude_repl.py stop`
+
+### Testing the System
+Run `python3 test_claude_repl.py` to verify everything works.
+
+**Remember**: This system transforms ML debugging from "restart and hope" to "explore and iterate" - use it whenever debugging complex ML issues!
+
+
+## Installation
+
 ```bash
-pip install progressive-ml-dev
-claude-repl setup
+curl -sSL https://raw.githubusercontent.com/yourrepo/main/src/install_universal.py | python3
 ```
-
-## Usage Example
-
-```
-User: /interactive start
-Claude: [Starts persistent session]
-
-User: Let's debug this FSDP shape mismatch
-Claude: [Uses persistent session, loads model once, debugs iteratively]
-
-User: tmux attach -t claude  # Monitor in real-time
-```
-
-This transforms ML debugging from "restart and hope" to "explore and iterate".
