@@ -36,75 +36,61 @@ def get_user_bin_path():
     
     return None
 
-def check_and_setup_path():
-    """Check if user bin is in PATH and offer to fix it"""
+def ensure_claude_repl_accessible():
+    """Ensure claude-repl is accessible from PATH"""
+    # First check if it's already accessible
+    success, _, _ = run_command("claude-repl --help", check=False)
+    if success:
+        print("✅ claude-repl already accessible")
+        return True
+    
+    # Try to find claude-repl in user bin
     user_bin = get_user_bin_path()
-    if not user_bin:
-        print("⚠️  Could not determine user bin path")
-        return False
-    
-    # Check if it's in PATH
-    current_path = os.environ.get("PATH", "")
-    if str(user_bin) in current_path:
-        print(f"✅ PATH already includes: {user_bin}")
-        return True
-    
-    print(f"⚠️  {user_bin} not in PATH")
-    
-    # Detect shell
-    shell = os.environ.get("SHELL", "")
-    if "zsh" in shell:
-        profile_file = "~/.zshrc"
-    elif "bash" in shell:
-        profile_file = "~/.bashrc"
-    else:
-        profile_file = "~/.zshrc"  # Default to zsh on macOS
-    
-    print(f"\n🔧 To fix PATH, run this command:")
-    print(f'echo \'export PATH="{user_bin}:$PATH"\' >> {profile_file}')
-    print(f"Then restart your terminal or run: source {profile_file}")
-    
-    # Try to add it automatically
-    try:
-        profile_path = Path.home() / profile_file.replace("~/", "")
-        export_line = f'export PATH="{user_bin}:$PATH"\n'
-        
-        # Check if already added
-        if profile_path.exists():
-            with open(profile_path, "r") as f:
-                content = f.read()
-            if str(user_bin) in content:
-                print("✅ PATH export already exists in profile")
-                # Update current session even if already in profile
-                os.environ["PATH"] = f"{user_bin}:{current_path}"
+    if user_bin:
+        claude_repl_path = user_bin / "claude-repl"
+        if claude_repl_path.exists():
+            # Create symlink in /usr/local/bin (standard PATH location)
+            try:
+                subprocess.run(["sudo", "ln", "-sf", str(claude_repl_path), "/usr/local/bin/claude-repl"], 
+                             check=True, capture_output=True)
+                print("✅ Created symlink to /usr/local/bin/claude-repl")
                 return True
+            except:
+                print("⚠️  Could not create symlink (need sudo)")
         
-        # Add to profile permanently
-        with open(profile_path, "a") as f:
-            f.write(f"\n# Progressive ML Development PATH\n{export_line}")
-        
-        print(f"✅ Added PATH export to {profile_file}")
-        print("✅ PATH will be available in new terminal sessions")
-        
-        # Update current environment for immediate use
-        os.environ["PATH"] = f"{user_bin}:{current_path}"
-        
-        # Also try to add to current shell if possible
-        try:
-            # Add to current shell's PATH immediately 
-            current_shell = os.environ.get("SHELL", "")
-            if "zsh" in current_shell:
-                subprocess.run(f"source {profile_file}", shell=True, capture_output=True)
-            elif "bash" in current_shell:
-                subprocess.run(f"source {profile_file}", shell=True, capture_output=True)
-        except:
-            pass  # Silently fail if can't source
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Could not automatically add to PATH: {e}")
-        return False
+        # Fallback: Add to PATH temporarily and permanently
+        current_path = os.environ.get("PATH", "")
+        if str(user_bin) not in current_path:
+            print(f"⚠️  Adding {user_bin} to PATH")
+            
+            # Update current session
+            os.environ["PATH"] = f"{user_bin}:{current_path}"
+            
+            # Add to shell profile
+            shell = os.environ.get("SHELL", "")
+            profile_file = "~/.zshrc" if "zsh" in shell else "~/.bashrc"
+            profile_path = Path.home() / profile_file.replace("~/", "")
+            
+            try:
+                export_line = f'export PATH="{user_bin}:$PATH"\n'
+                
+                # Check if already there
+                if profile_path.exists():
+                    with open(profile_path, "r") as f:
+                        if str(user_bin) in f.read():
+                            print("✅ PATH already in profile")
+                            return True
+                
+                # Add to profile
+                with open(profile_path, "a") as f:
+                    f.write(f"\n# Progressive ML Development\n{export_line}")
+                print(f"✅ Added to {profile_file}")
+                return True
+                
+            except Exception as e:
+                print(f"⚠️  Could not update profile: {e}")
+    
+    return False
 
 def test_claude_repl_command():
     """Test if claude-repl command works"""
@@ -138,14 +124,24 @@ def install_package():
     
     # Use the same Python interpreter that's running this script
     python_cmd = sys.executable
-    success, stdout, stderr = run_command(f"{python_cmd} -m pip install --user progressive-ml-dev", check=False)
+    
+    # Try system-wide install first (will be in standard PATH)
+    success, stdout, stderr = run_command(f"{python_cmd} -m pip install progressive-ml-dev", check=False)
     
     if success:
-        print("✅ Package installed successfully")
+        print("✅ Package installed system-wide")
         return True
     else:
-        print(f"❌ Installation failed: {stderr}")
-        return False
+        print("⚠️  System install failed, trying user install...")
+        # Fallback to user install
+        success, stdout, stderr = run_command(f"{python_cmd} -m pip install --user progressive-ml-dev", check=False)
+        
+        if success:
+            print("✅ Package installed to user directory")
+            return True
+        else:
+            print(f"❌ Installation failed: {stderr}")
+            return False
 
 def run_setup():
     """Run system setup"""
@@ -230,8 +226,8 @@ def main():
         print("\n❌ Installation failed")
         sys.exit(1)
     
-    # Setup PATH
-    path_setup = check_and_setup_path()
+    # Ensure claude-repl is accessible
+    path_setup = ensure_claude_repl_accessible()
     
     # Run system setup
     if not run_setup():

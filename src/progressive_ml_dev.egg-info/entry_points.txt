@@ -1,0 +1,3 @@
+[console_scripts]
+claude-repl = progressive_ml_dev.cli:main
+
