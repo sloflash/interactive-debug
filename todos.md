@@ -1,0 +1,3 @@
+- [] user can ask claude to pause
+- [] not sure if claude can monitor the results 
+- [] how to nit have sleep 10 in there for all the time

@@ -15,12 +15,14 @@ import shutil
 from pathlib import Path
 
 class ProgressiveMLCLI:
-    def __init__(self, session_name="claude"):
+    def __init__(self, session_name="claude", venv_path=None):
         self.session_name = session_name
+        self.venv_path = venv_path
         self.session_dir = Path("/tmp/claude_session")
         self.session_file = self.session_dir / f"{session_name}.json"
         self.session_dir.mkdir(exist_ok=True)
         self.config_dir = Path.home() / ".claude"
+        self.paused = False
     
     def _run_tmux(self, cmd):
         """Run tmux command and return result"""
@@ -42,6 +44,9 @@ class ProgressiveMLCLI:
     
     def _save_session_info(self, info):
         """Save session metadata to file"""
+        info["paused"] = self.paused
+        if self.venv_path:
+            info["venv_path"] = str(self.venv_path)
         with open(self.session_file, "w") as f:
             json.dump(info, f, indent=2)
     
@@ -49,7 +54,11 @@ class ProgressiveMLCLI:
         """Load session metadata from file"""
         if self.session_file.exists():
             with open(self.session_file, "r") as f:
-                return json.load(f)
+                info = json.load(f)
+                self.paused = info.get("paused", False)
+                if "venv_path" in info:
+                    self.venv_path = info["venv_path"]
+                return info
         return {}
     
     def _ensure_tmux_permissions(self):
@@ -160,17 +169,39 @@ Claude: [Uses the persistent session for debugging, no model reloading needed]
 This system transforms ML debugging from "restart and hope" to "explore and iterate".
 """
 
-    def start(self):
+    def start(self, venv_path=None):
         """Start a new persistent Python session"""
+        if venv_path:
+            self.venv_path = venv_path
+            
         # Ensure tmux permissions are set up
         if not self._ensure_tmux_permissions():
             print("Warning: tmux permissions may need to be granted")
             print("If prompted, please allow terminal access for tmux")
         
         if self._session_exists():
+            session_info = self._load_session_info()
             print(f"Session '{self.session_name}' already exists")
+            if session_info.get("paused"):
+                print("🔴 Session is PAUSED - use 'claude-repl resume' to continue")
             print(f"Use 'tmux attach -t {self.session_name}' to monitor")
             return True
+        
+        # Prepare Python command with virtual environment if specified
+        if self.venv_path:
+            venv_path = Path(self.venv_path).expanduser()
+            if not venv_path.exists():
+                print(f"❌ Virtual environment not found: {venv_path}")
+                return False
+            
+            python_cmd = str(venv_path / "bin" / "python")
+            if not Path(python_cmd).exists():
+                print(f"❌ Python not found in venv: {python_cmd}")
+                return False
+            
+            print(f"🐍 Using virtual environment: {venv_path}")
+        else:
+            python_cmd = "python3"
         
         # Create new tmux session with Python
         stdout, stderr = self._run_tmux([
@@ -178,7 +209,7 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
             "-d", 
             "-s", self.session_name,
             "-c", os.getcwd(),
-            "python3", "-i"
+            python_cmd, "-i"
         ])
         
         if stdout is None:
@@ -194,15 +225,21 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         }
         self._save_session_info(session_info)
         
-        print(f"✅ Started session '{self.session_name}'")
-        print(f"📺 Monitor with: tmux attach -t {self.session_name}")
-        print(f"🔧 Send commands with: claude-repl send \"your_code\"")
+        print(f"Started session '{self.session_name}'")
+        print(f"Monitor with: tmux attach -t {self.session_name}")
+        print(f"Send commands with: claude-repl send \"your_code\"")
         return True
     
-    def send(self, command):
+    def send(self, command, wait_time=1.0):
         """Send command to the session"""
         if not self._session_exists():
             print(f"❌ Session '{self.session_name}' not found. Start with: claude-repl start")
+            return False
+        
+        # Check if session is paused
+        session_info = self._load_session_info()
+        if session_info.get("paused"):
+            print("Session is PAUSED. Use 'claude-repl resume' to continue or 'claude-repl send --force' to override")
             return False
         
         # Send command to tmux session
@@ -218,6 +255,11 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
             return False
         
         print(f"📤 Sent: {command}")
+        
+        # Wait for command to execute (replace tmux sleep with Python sleep)
+        if wait_time > 0:
+            time.sleep(wait_time)
+        
         return True
     
     def read(self, lines=50):
@@ -278,6 +320,59 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         print("   exit()     - Exit Python (will end session)")
         print()
         print("👥 Both you and Claude can monitor simultaneously!")
+        return True
+    
+    def pause(self):
+        """Pause the session - Claude won't send commands until resumed"""
+        if not self._session_exists():
+            print(f"❌ Session '{self.session_name}' not found")
+            return False
+        
+        self.paused = True
+        session_info = self._load_session_info()
+        session_info["paused"] = True
+        self._save_session_info(session_info)
+        
+        print(f"⏸️  Session '{self.session_name}' PAUSED")
+        print("🔍 You can now inspect the session manually with: tmux attach -t claude")
+        print("🔄 Resume with: claude-repl resume")
+        return True
+    
+    def resume(self):
+        """Resume the session - allow Claude to send commands again"""
+        if not self._session_exists():
+            print(f"❌ Session '{self.session_name}' not found")
+            return False
+        
+        self.paused = False
+        session_info = self._load_session_info()
+        session_info["paused"] = False
+        self._save_session_info(session_info)
+        
+        print(f"▶️  Session '{self.session_name}' RESUMED")
+        print("✅ Claude can now send commands to the session")
+        return True
+    
+    def force_send(self, command):
+        """Send command even if session is paused"""
+        if not self._session_exists():
+            print(f"❌ Session '{self.session_name}' not found")
+            return False
+        
+        # Send command bypassing pause check
+        stdout, stderr = self._run_tmux([
+            "send-keys", 
+            "-t", self.session_name,
+            command,
+            "Enter"
+        ])
+        
+        if stdout is None:
+            print(f"❌ Failed to send command: {stderr}")
+            return False
+        
+        print(f"🔴 FORCE Sent: {command}")
+        time.sleep(1.0)
         return True
     
     def stop(self):
@@ -465,27 +560,37 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
 
     def help(self):
         """Show help information"""
-        print("🧠 Progressive ML Development - claude-repl")
+        print("Progressive ML Development - claude-repl")
         print("=" * 50)
         print()
-        print("📋 Available Commands:")
+        print("Available Commands:")
         print("  setup                        # One-time system setup")
         print("  install                      # Install slash commands in current project")
-        print("  start                        # Start persistent Python session")
+        print("  start [--venv PATH]          # Start persistent Python session")
         print("  stop                         # Stop session")
         print("  send \"command\"               # Send Python code to session")
+        print("  send --force \"command\"       # Send even if paused")
         print("  read [lines]                 # Read session output")
         print("  status                       # Check session health")
+        print("  pause                        # Pause session (Claude won't send commands)")
+        print("  resume                       # Resume session")
         print("  attach                       # Show monitoring instructions")
         print("  help                         # Show this help")
         print()
-        print("🎯 For Claude Conversations (after install):")
+        print("Virtual Environment Support:")
+        print("  claude-repl start --venv ~/myproject/.venv")
+        print("  claude-repl start --venv /path/to/venv")
+        print()
+        print("Session Control:")
+        print("  claude-repl pause            # Let user inspect manually")
+        print("  tmux attach -t claude        # Monitor session")
+        print("  claude-repl resume           # Allow Claude to continue")
+        print()
+        print("For Claude Conversations (after install):")
         print("  /interactive start           # Claude starts session")
         print("  /interactive stop            # Claude stops session")
         print("  /interactive status          # Claude checks status")
         print("  /ml-debug \"problem\"          # Claude debugs ML issue")
-        print()
-        print("📚 Learn more: ~/.claude/available-commands.md")
         
     def test(self):
         """Run built-in tests"""
@@ -559,26 +664,43 @@ def main():
         cli.help()
         return
     
-    cli = ProgressiveMLCLI()
     command = sys.argv[1]
+    cli = ProgressiveMLCLI()
     
     if command == "setup":
         cli.setup()
     elif command == "install":
         cli.install()
     elif command == "start":
-        cli.start()
+        venv_path = None
+        if len(sys.argv) > 2 and sys.argv[2] == "--venv":
+            if len(sys.argv) < 4:
+                print("Usage: claude-repl start --venv /path/to/venv")
+                return
+            venv_path = sys.argv[3]
+        cli.start(venv_path)
     elif command == "send":
         if len(sys.argv) < 3:
-            print("Usage: claude-repl send \"command\"")
+            print("Usage: claude-repl send \"command\" or claude-repl send --force \"command\"")
             return
-        cli.send(sys.argv[2])
+        
+        if sys.argv[2] == "--force":
+            if len(sys.argv) < 4:
+                print("Usage: claude-repl send --force \"command\"")
+                return
+            cli.force_send(sys.argv[3])
+        else:
+            cli.send(sys.argv[2])
     elif command == "read":
         lines = int(sys.argv[2]) if len(sys.argv) > 2 else 50
         output = cli.read(lines)
         print(output)
     elif command == "status":
         cli.status()
+    elif command == "pause":
+        cli.pause()
+    elif command == "resume":
+        cli.resume()
     elif command == "attach":
         cli.attach()
     elif command == "stop":
@@ -589,7 +711,7 @@ def main():
         success = cli.test()
         sys.exit(0 if success else 1)
     else:
-        print(f"❌ Unknown command: {command}")
+        print(f"Unknown command: {command}")
         cli.help()
 
 if __name__ == "__main__":
