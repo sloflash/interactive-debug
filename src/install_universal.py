@@ -75,17 +75,31 @@ def check_and_setup_path():
                 content = f.read()
             if str(user_bin) in content:
                 print("✅ PATH export already exists in profile")
+                # Update current session even if already in profile
+                os.environ["PATH"] = f"{user_bin}:{current_path}"
                 return True
         
-        # Add to profile
+        # Add to profile permanently
         with open(profile_path, "a") as f:
-            f.write(f"\n# Progressive ML Development\n{export_line}")
+            f.write(f"\n# Progressive ML Development PATH\n{export_line}")
         
         print(f"✅ Added PATH export to {profile_file}")
-        print("⚠️  Restart your terminal for the change to take effect")
+        print("✅ PATH will be available in new terminal sessions")
         
-        # Update current environment for this session
+        # Update current environment for immediate use
         os.environ["PATH"] = f"{user_bin}:{current_path}"
+        
+        # Also try to add to current shell if possible
+        try:
+            # Add to current shell's PATH immediately 
+            current_shell = os.environ.get("SHELL", "")
+            if "zsh" in current_shell:
+                subprocess.run(f"source {profile_file}", shell=True, capture_output=True)
+            elif "bash" in current_shell:
+                subprocess.run(f"source {profile_file}", shell=True, capture_output=True)
+        except:
+            pass  # Silently fail if can't source
+        
         return True
         
     except Exception as e:

@@ -45,5 +45,5 @@ Execute the requested $ARGUMENTS command using `claude-repl $ARGUMENTS`.
 
 If claude-repl is not found, the system needs to be installed first:
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourrepo/main/src/install_universal.py | python3
+curl -sSL https://raw.githubusercontent.com/sloflash/interactive-debug/main/src/install_universal.py | python3
 ```

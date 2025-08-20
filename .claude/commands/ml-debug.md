@@ -33,5 +33,5 @@ Start the interactive session using `claude-repl start` and begin collaborative 
 
 If claude-repl command is not found, install the system:
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourrepo/main/src/install_universal.py | python3
+curl -sSL https://raw.githubusercontent.com/sloflash/interactive-debug/main/src/install_universal.py | python3
 ```
