@@ -1,0 +1,79 @@
+# Progressive ML Development
+
+Persistent Python sessions for collaborative ML debugging without restart penalties.
+
+## The Problem
+
+Traditional ML debugging involves:
+- ⏰ **Restart Penalties**: Hours lost reloading models after every error
+- 🔄 **Context Loss**: Debugging state reset with each restart  
+- 😤 **Frustration**: "Getting that FSDP shape mismatch again... *waits 20 minutes*"
+
+## The Solution
+
+**Progressive ML Development** provides persistent Python sessions where:
+- ✅ **Models Stay Loaded**: No restart penalties across debugging sessions
+- ✅ **Shared Environment**: Both you and Claude use the same Python session
+- ✅ **Checkpoint/Rollback**: Save state before risky operations, instant recovery
+- ✅ **Real-time Collaboration**: Monitor the same session simultaneously
+
+## Installation
+
+```bash
+pip install progressive-ml-dev
+claude-repl setup
+```
+
+## Usage
+
+### In Any Claude Conversation:
+```
+/interactive start    # Start persistent session
+/interactive status   # Check session health  
+/interactive attach   # Monitor session: tmux attach -t claude
+/interactive stop     # Stop session
+```
+
+### Example Workflow:
+```
+User: "Getting FSDP shape mismatch, let's debug this interactively"
+User: /interactive start
+
+Claude: ✅ Started persistent session
+Claude: [Loads your model once, debugs iteratively]
+Claude: [Creates checkpoint before risky changes]
+Claude: [Instant rollback if needed - no model reloading]
+
+User: tmux attach -t claude  # Monitor in real-time
+```
+
+## Key Features
+
+- 🌍 **Global Installation**: Works in any project directory
+- 🚫 **Zero Project Pollution**: No config files added to your repositories  
+- ⚡ **Instant Setup**: One command setup, works everywhere
+- 🔧 **Self-Testing**: Built-in test suite validates functionality
+
+## Commands
+
+```bash
+claude-repl setup     # One-time system setup
+claude-repl start     # Start persistent session
+claude-repl status    # Check session health
+claude-repl test      # Run built-in tests
+claude-repl help      # Show all commands
+```
+
+## How It Works
+
+1. **tmux-based Sessions**: Persistent terminal sessions both you and Claude can access
+2. **Smart Permissions**: Automatic tmux permission handling
+3. **Session Management**: JSON metadata tracking with automatic cleanup
+4. **Cross-platform**: Mac/Linux support (Windows via WSL)
+
+## Transforms Your Workflow
+
+**Before**: "restart and hope" - lose hours to model reloading
+**After**: "explore and iterate" - rapid experimentation with instant recovery
+
+Perfect for debugging complex ML issues like FSDP shape mismatches, memory errors, training instabilities, and model architecture experiments.
