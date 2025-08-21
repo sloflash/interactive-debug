@@ -33,6 +33,109 @@ class ClaudeREPL:
         except subprocess.CalledProcessError as e:
             return None, e.stderr.strip()
     
+    def _get_best_repl(self):
+        """Detect the best available Python REPL"""
+        repls = [
+            ("ptpython", ["ptpython", "--config-file", self._create_ptpython_config()]),
+            ("ipython", ["ipython"]),
+            ("python-rich", ["python3", "-i", "-c", self._get_rich_init()]),
+            ("python", ["python3", "-i"])
+        ]
+        
+        for name, cmd in repls:
+            try:
+                if name == "ptpython":
+                    result = subprocess.run(["ptpython", "--version"], 
+                                         capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        return name, cmd
+                elif name == "ipython":
+                    result = subprocess.run(["ipython", "--version"], 
+                                         capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        return name, cmd
+                elif name == "python-rich":
+                    result = subprocess.run(["python3", "-c", "import rich"], 
+                                         capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0:
+                        return name, cmd
+                else:
+                    return name, cmd
+            except:
+                continue
+        
+        return "python", ["python3", "-i"]
+    
+    def _create_ptpython_config(self):
+        """Create a ptpython config file with good dark theme"""
+        config_dir = Path("/tmp/claude_ptpython")
+        config_dir.mkdir(exist_ok=True)
+        config_file = config_dir / "config.py"
+        
+        config_content = '''"""
+ptpython configuration for better dark theme coding
+"""
+from ptpython.repl import PythonRepl
+
+def configure(repl: PythonRepl) -> None:
+    """
+    Configuration method. This is called during the start-up of ptpython.
+    """
+    # Use a dark-friendly color scheme
+    repl.use_code_colorscheme("monokai")
+    
+    # Enable syntax highlighting
+    repl.highlight_matching_parenthesis = True
+    
+    # Show function signature while typing
+    repl.show_signature = True
+    
+    # Show docstring in a popup
+    repl.show_docstring = True
+    
+    # Enable auto-completion
+    repl.enable_auto_suggest = True
+    
+    # Show line numbers
+    repl.show_line_numbers = True
+    
+    # Wrap lines instead of scrolling horizontally
+    repl.wrap_lines = True
+    
+    # Enable mouse support
+    repl.enable_mouse_support = True
+    
+    # Better prompt style
+    repl.prompt_style = "classic"  # Options: 'classic', 'ipython'
+    
+    # Set max brightness for better dark background readability
+    repl.max_brightness = 0.6
+'''
+        
+        with open(config_file, "w") as f:
+            f.write(config_content)
+        
+        return str(config_file)
+    
+    def _get_rich_init(self):
+        """Get Rich initialization command for fallback"""
+        return (
+            "try:\n"
+            "    from rich import pretty, traceback, console\n"
+            "    pretty.install()\n"
+            "    traceback.install(show_locals=True)\n"
+            "    import sys\n"
+            "    sys.ps1 = '\\x01\\x1b[1;34m\\x02>>> \\x01\\x1b[0m\\x02'\n"
+            "    sys.ps2 = '\\x01\\x1b[1;36m\\x02... \\x01\\x1b[0m\\x02'\n"
+            "    console = console.Console()\n"
+            "    print('Rich enhanced REPL activated!')\n"
+            "except ImportError:\n"
+            "    import sys\n"
+            "    sys.ps1 = '\\x01\\x1b[1;34m\\x02>>> \\x01\\x1b[0m\\x02'\n"
+            "    sys.ps2 = '\\x01\\x1b[1;36m\\x02... \\x01\\x1b[0m\\x02'\n"
+            "    print('\\x1b[33mColored prompts activated\\x1b[0m')\n"
+        )
+    
     def _session_exists(self):
         """Check if tmux session exists"""
         stdout, stderr = self._run_tmux(["has-session", "-t", self.session_name])
@@ -80,14 +183,18 @@ class ClaudeREPL:
             print(f"Use 'tmux attach -t {self.session_name}' to monitor")
             return True
         
-        # Create new tmux session with Python
+        # Detect and use the best available REPL
+        repl_name, repl_cmd = self._get_best_repl()
+        
+        print(f"Using {repl_name} for enhanced Python experience")
+        
+        # Create new tmux session with best available REPL
         stdout, stderr = self._run_tmux([
             "new-session", 
             "-d", 
             "-s", self.session_name,
             "-c", os.getcwd(),
-            "python3", "-i"
-        ])
+        ] + repl_cmd)
         
         if stdout is None:
             print(f"Failed to create session: {stderr}")
@@ -113,6 +220,14 @@ class ClaudeREPL:
             print(f"Session '{self.session_name}' not found. Start with: python3 claude_repl.py start")
             return False
         
+        # Add extra spacing before command for better visual separation
+        self._run_tmux([
+            "send-keys", 
+            "-t", self.session_name,
+            "print()",
+            "Enter"
+        ])
+        
         # Send command to tmux session
         stdout, stderr = self._run_tmux([
             "send-keys", 
@@ -125,7 +240,7 @@ class ClaudeREPL:
             print(f"Failed to send command: {stderr}")
             return False
         
-        print(f"Sent: {command}")
+        print(f"\033[94mSent:\033[0m {command}")
         return True
     
     def read(self, lines=50):
