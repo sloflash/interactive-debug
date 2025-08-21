@@ -490,9 +490,10 @@ Handle the interactive command: $ARGUMENTS
 ## 🚨 SMART EXECUTION RULES 🚨
 
 **BATCH RELATED OPERATIONS FOR EFFICIENCY**
-- Group related imports together
-- Group dataclass/function definitions together  
-- Group related calculations (≤10 lines unless they need to be together)
+- Group related imports together (up to 10 lines at once)
+- Group dataclass/function definitions together (up to 10 lines at once)
+- Group related calculations that belong together (up to 10 lines at once)
+- Commands that work together should ALWAYS be sent together to avoid jumbled output
 - Use `/interactive read` after each logical batch
 - Fall back to line-by-line only when debugging errors
 
