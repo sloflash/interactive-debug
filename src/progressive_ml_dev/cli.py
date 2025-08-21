@@ -14,6 +14,35 @@ import time
 import shutil
 from pathlib import Path
 
+# ANSI color codes for terminal output
+class Colors:
+    BLUE = '\033[94m'      # Commands/Info
+    GREEN = '\033[92m'     # Success
+    RED = '\033[91m'       # Errors
+    YELLOW = '\033[93m'    # Warnings/Status
+    BOLD = '\033[1m'       # Bold text
+    RESET = '\033[0m'      # Reset to default
+    
+    @staticmethod
+    def blue(text):
+        return f"{Colors.BLUE}{text}{Colors.RESET}"
+    
+    @staticmethod
+    def green(text):
+        return f"{Colors.GREEN}{text}{Colors.RESET}"
+    
+    @staticmethod
+    def red(text):
+        return f"{Colors.RED}{text}{Colors.RESET}"
+    
+    @staticmethod
+    def yellow(text):
+        return f"{Colors.YELLOW}{text}{Colors.RESET}"
+    
+    @staticmethod
+    def bold(text):
+        return f"{Colors.BOLD}{text}{Colors.RESET}"
+
 class ProgressiveMLCLI:
     def __init__(self, session_name="claude", venv_path=None, interactive_delay=5):
         self.session_name = session_name
@@ -83,48 +112,87 @@ class ProgressiveMLCLI:
             except:
                 return False
 
+    def _apply_tmux_colors(self):
+        """Apply ClaudeBuddy colors programmatically to the session"""
+        color_commands = [
+            # Status bar colors
+            ["set-option", "-t", self.session_name, "status-style", "bg=colour24,fg=colour15"],
+            ["set-option", "-t", self.session_name, "status-left-style", "bg=colour24,fg=colour15,bold"],
+            ["set-option", "-t", self.session_name, "status-right-style", "bg=colour24,fg=colour15"],
+            
+            # Window status colors
+            ["set-option", "-t", self.session_name, "window-status-style", "bg=colour24,fg=colour15"],
+            ["set-option", "-t", self.session_name, "window-status-current-style", "bg=colour28,fg=colour15,bold"],
+            ["set-option", "-t", self.session_name, "window-status-activity-style", "bg=colour196,fg=colour15"],
+            ["set-option", "-t", self.session_name, "window-status-bell-style", "bg=colour196,fg=colour15,bold"],
+            
+            # Pane border colors
+            ["set-option", "-t", self.session_name, "pane-border-style", "fg=colour240"],
+            ["set-option", "-t", self.session_name, "pane-active-border-style", "fg=colour28"],
+            
+            # Message colors
+            ["set-option", "-t", self.session_name, "message-style", "bg=colour28,fg=colour15,bold"],
+            ["set-option", "-t", self.session_name, "message-command-style", "bg=colour24,fg=colour15,bold"],
+            
+            # Mode colors
+            ["set-option", "-t", self.session_name, "mode-style", "bg=colour24,fg=colour15,bold"],
+            
+            # Clock color
+            ["set-option", "-t", self.session_name, "clock-mode-colour", "colour28"],
+        ]
+        
+        for cmd in color_commands:
+            try:
+                stdout, stderr = self._run_tmux(cmd)
+                if stdout is None:
+                    # Continue if any color command fails
+                    continue
+            except:
+                # Continue if any color command fails
+                pass
+
     def setup(self):
         """One-time system setup"""
-        print("🚀 Setting up Progressive ML Development system...")
+        print(Colors.blue("Setting up Progressive ML Development system..."))
         
         # Check tmux installation
         if not shutil.which("tmux"):
-            print("❌ tmux not found. Installing...")
+            print(Colors.red("ERROR: tmux not found. Installing..."))
             if sys.platform == "darwin":  # macOS
                 try:
                     subprocess.run(["brew", "install", "tmux"], check=True)
-                    print("✅ tmux installed via Homebrew")
+                    print(Colors.green("SUCCESS: tmux installed via Homebrew"))
                 except subprocess.CalledProcessError:
-                    print("❌ Failed to install tmux. Please install manually: brew install tmux")
+                    print(Colors.red("ERROR: Failed to install tmux. Please install manually: brew install tmux"))
                     return False
             else:
-                print("❌ Please install tmux manually:")
+                print(Colors.red("ERROR: Please install tmux manually:"))
                 print("   Ubuntu/Debian: sudo apt install tmux")
                 print("   CentOS/RHEL: sudo yum install tmux")
                 return False
         else:
-            print("✅ tmux found")
+            print(Colors.green("OK: tmux found"))
         
         # Set up permissions
-        print("🔑 Setting up tmux permissions...")
+        print(Colors.blue("Setting up tmux permissions..."))
         if self._ensure_tmux_permissions():
-            print("✅ tmux permissions configured")
+            print(Colors.green("OK: tmux permissions configured"))
         else:
-            print("⚠️  tmux permissions may need manual approval")
+            print(Colors.yellow("WARNING: tmux permissions may need manual approval"))
             print("   If prompted, please allow terminal access for tmux")
         
         # Create config directory
         self.config_dir.mkdir(exist_ok=True)
-        print(f"✅ Config directory created: {self.config_dir}")
+        print(Colors.green(f"OK: Config directory created: {self.config_dir}"))
         
         # Create available commands file
         commands_file = self.config_dir / "available-commands.md"
         if not commands_file.exists():
             with open(commands_file, "w") as f:
                 f.write(self._get_commands_doc())
-            print(f"✅ Commands documentation created: {commands_file}")
+            print(Colors.green(f"OK: Commands documentation created: {commands_file}"))
         
-        print("\n🎉 Setup complete!")
+        print(f"\n{Colors.green('Setup complete!')}")
         print("\nTo use in any Claude conversation:")
         print("  /interactive start    # Start persistent session")
         print("  /interactive help     # Show all commands")
@@ -187,7 +255,7 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
             session_info = self._load_session_info()
             print(f"Session '{self.session_name}' already exists")
             if session_info.get("paused"):
-                print("🔴 Session is PAUSED - use 'claude-repl resume' to continue")
+                print(Colors.red("Session is PAUSED - use 'claude-repl resume' to continue"))
             print(f"Use 'tmux attach -t {self.session_name}' to monitor")
             return True
         
@@ -195,15 +263,15 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         if self.venv_path:
             venv_path = Path(self.venv_path).expanduser()
             if not venv_path.exists():
-                print(f"❌ Virtual environment not found: {venv_path}")
+                print(Colors.red(f"ERROR: Virtual environment not found: {venv_path}"))
                 return False
             
             python_cmd = str(venv_path / "bin" / "python")
             if not Path(python_cmd).exists():
-                print(f"❌ Python not found in venv: {python_cmd}")
+                print(Colors.red(f"ERROR: Python not found in venv: {python_cmd}"))
                 return False
             
-            print(f"🐍 Using virtual environment: {venv_path}")
+            print(Colors.blue(f"Using virtual environment: {venv_path}"))
         else:
             python_cmd = "python3"
         
@@ -219,6 +287,9 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         if stdout is None:
             print(f"Failed to create session: {stderr}")
             return False
+        
+        # Apply ClaudeBuddy colors to the session
+        self._apply_tmux_colors()
         
         # Save session info
         session_info = {
@@ -237,7 +308,7 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
     def send(self, command, wait_time=None):
         """Send command to the session"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found. Start with: claude-repl start")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found. Start with: claude-repl start"))
             return False
         
         # Check if session is paused
@@ -255,10 +326,10 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         ], apply_delay=True)
         
         if stdout is None:
-            print(f"❌ Failed to send command: {stderr}")
+            print(Colors.red(f"ERROR: Failed to send command: {stderr}"))
             return False
         
-        print(f"📤 Sent: {command}")
+        print(Colors.blue(f"Sent: {command}"))
         
         # Additional wait time if specified (on top of interactive delay)
         if wait_time is not None and wait_time > 0:
@@ -269,7 +340,7 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
     def read(self, lines=50):
         """Read output from the session"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found"))
             return ""
         
         # Capture pane content
@@ -281,7 +352,7 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         ])
         
         if stdout is None:
-            print(f"❌ Failed to read session: {stderr}")
+            print(Colors.red(f"ERROR: Failed to read session: {stderr}"))
             return ""
         
         return stdout
@@ -289,18 +360,18 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
     def status(self):
         """Check session status"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found"))
             return False
         
         session_info = self._load_session_info()
         
-        print(f"📊 Session: {self.session_name}")
-        print(f"📊 Status: Active")
+        print(Colors.yellow(f"Session: {self.session_name}"))
+        print(Colors.yellow("Status: Active"))
         if "created_at" in session_info:
             created = time.ctime(session_info["created_at"])
-            print(f"📊 Created: {created}")
+            print(Colors.yellow(f"Created: {created}"))
         if "working_dir" in session_info:
-            print(f"📊 Working Dir: {session_info['working_dir']}")
+            print(Colors.yellow(f"Working Dir: {session_info['working_dir']}"))
         
         # Show recent output
         print("\n--- Recent Output ---")
@@ -312,24 +383,24 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
     def attach(self):
         """Show instructions for attaching to session"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found. Start with: claude-repl start")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found. Start with: claude-repl start"))
             return False
         
-        print(f"📺 To monitor session '{self.session_name}' in real-time:")
+        print(Colors.yellow(f"To monitor session '{self.session_name}' in real-time:"))
         print(f"   tmux attach -t {self.session_name}")
         print()
-        print("🎮 In the tmux session:")
+        print(Colors.yellow("In the tmux session:"))
         print("   Ctrl+B, D  - Detach (leave session running)")
         print("   Ctrl+C     - Interrupt current command")
         print("   exit()     - Exit Python (will end session)")
         print()
-        print("👥 Both you and Claude can monitor simultaneously!")
+        print(Colors.blue("Both you and Claude can monitor simultaneously!"))
         return True
     
     def pause(self):
         """Pause the session - Claude won't send commands until resumed"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found"))
             return False
         
         self.paused = True
@@ -337,15 +408,15 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         session_info["paused"] = True
         self._save_session_info(session_info)
         
-        print(f"⏸️  Session '{self.session_name}' PAUSED")
-        print("🔍 You can now inspect the session manually with: tmux attach -t claude")
-        print("🔄 Resume with: claude-repl resume")
+        print(Colors.yellow(f"Session '{self.session_name}' PAUSED"))
+        print(Colors.yellow("You can now inspect the session manually with: tmux attach -t claude"))
+        print(Colors.yellow("Resume with: claude-repl resume"))
         return True
     
     def resume(self):
         """Resume the session - allow Claude to send commands again"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found"))
             return False
         
         self.paused = False
@@ -353,14 +424,14 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         session_info["paused"] = False
         self._save_session_info(session_info)
         
-        print(f"▶️  Session '{self.session_name}' RESUMED")
-        print("✅ Claude can now send commands to the session")
+        print(Colors.green(f"Session '{self.session_name}' RESUMED"))
+        print(Colors.green("Claude can now send commands to the session"))
         return True
     
     def force_send(self, command):
         """Send command even if session is paused"""
         if not self._session_exists():
-            print(f"❌ Session '{self.session_name}' not found")
+            print(Colors.red(f"ERROR: Session '{self.session_name}' not found"))
             return False
         
         # Send command bypassing pause check
@@ -372,10 +443,10 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         ])
         
         if stdout is None:
-            print(f"❌ Failed to send command: {stderr}")
+            print(Colors.red(f"ERROR: Failed to send command: {stderr}"))
             return False
         
-        print(f"🔴 FORCE Sent: {command}")
+        print(Colors.red(f"FORCE Sent: {command}"))
         time.sleep(1.0)
         return True
     
@@ -396,12 +467,12 @@ This system transforms ML debugging from "restart and hope" to "explore and iter
         if self.session_file.exists():
             self.session_file.unlink()
         
-        print(f"✅ Stopped session '{self.session_name}'")
+        print(Colors.green(f"Stopped session '{self.session_name}'"))
         return True
 
     def install(self):
         """Install slash commands in current project"""
-        print("📂 Installing Progressive ML Development commands in current project...")
+        print(Colors.blue("Installing Progressive ML Development commands in current project..."))
         
         # Create .claude/commands directory
         commands_dir = Path(".claude/commands")
@@ -416,14 +487,64 @@ You are now using the Progressive ML Development system for collaborative debugg
 
 Handle the interactive command: $ARGUMENTS
 
-Available commands:
+## 🚨 SMART EXECUTION RULES 🚨
+
+**BATCH RELATED OPERATIONS FOR EFFICIENCY**
+- Group related imports together
+- Group dataclass/function definitions together  
+- Group related calculations (≤10 lines unless they need to be together)
+- Use `/interactive read` after each logical batch
+- Fall back to line-by-line only when debugging errors
+
+### ✅ EFFICIENT Batching:
+```
+/interactive send "import numpy as np
+import torch
+from dataclasses import dataclass"
+/interactive read
+
+/interactive send "@dataclass
+class ModelConfig:
+    model_params: int = 7_000_000_000
+    batch_size_per_gpu: int = 4
+    precision_bytes: int = 2"
+/interactive read
+
+/interactive send "config = ModelConfig()
+flops_per_iteration = 6 * config.model_params * config.batch_size_per_gpu
+print(f'FLOPs: {flops_per_iteration:e}')"
+/interactive read
+```
+
+### ❌ INEFFICIENT Usage:
+```
+/interactive send "import numpy as np"
+/interactive read
+/interactive send "import torch" 
+/interactive read
+/interactive send "from dataclasses import dataclass"
+/interactive read
+# Don't split every single line!
+```
+
+## Available Commands
+
 - **start** - Start persistent Python session using `claude-repl start`
 - **stop** - Stop the session using `claude-repl stop`  
 - **status** - Check session health using `claude-repl status`
 - **attach** - Show monitoring instructions using `claude-repl attach`
-- **send "code"** - Send Python code to session using `claude-repl send "code"`
+- **send "code_batch"** - Send logical batch of Python code using `claude-repl send "code"`
 - **read** - Read session output using `claude-repl read`
 - **help** - Show all available commands using `claude-repl help`
+
+## Smart Batching Protocol
+
+When executing code:
+1. Group related operations into logical batches
+2. Send batch with `/interactive send "batch"`
+3. Read output with `/interactive read`
+4. Verify the batch executed successfully
+5. If error occurs, break into smaller pieces or line-by-line for debugging
 
 ## How This Works
 
@@ -432,6 +553,7 @@ When you use /interactive commands:
 2. Both you and I can monitor the same Python environment  
 3. Models stay loaded across debugging sessions (no restart penalties)
 4. Create checkpoints before risky operations, rollback instantly
+5. Smart batching improves efficiency while maintaining proper debugging capabilities
 
 ## Session Monitoring
 
@@ -442,16 +564,26 @@ tmux attach -t claude
 
 Both you and I can observe the same execution environment simultaneously.
 
-## Example Usage
+## Example: Smart Batch Debugging
 
 ```
 /interactive start
-/interactive send "import torch; model = load_large_model()"  
+/interactive send "import torch
+import numpy as np"
 /interactive read
-# Model stays loaded for iterative debugging
+/interactive send "model = torch.nn.Linear(10, 5)
+x = torch.randn(1, 10)
+output = model(x)"
+/interactive read
+/interactive send "print(f'Torch version: {torch.__version__}')
+print(f'Output shape: {output.shape}')
+print(f'Output: {output}')"
+/interactive read
 ```
 
-Execute the requested $ARGUMENTS command now using the appropriate `claude-repl` command."""
+Execute the requested $ARGUMENTS command using `claude-repl $ARGUMENTS`.
+
+**Remember: Use smart batching for efficiency, fall back to line-by-line for debugging errors!**"""
 
         # Create ml-debug.md command
         ml_debug_content = """# ML Debugging with Progressive Development
@@ -472,10 +604,10 @@ The user is experiencing: $ARGUMENTS
 
 ## Key Benefits
 
-- ⚡ **No Restart Penalties**: Models stay loaded across debugging attempts
-- 🔄 **Checkpoint/Rollback**: Save state, try approaches, rollback instantly
-- 👥 **Real-time Collaboration**: Shared session monitoring
-- 🧠 **Context Preservation**: Debugging state persists across iterations
+- No Restart Penalties: Models stay loaded across debugging attempts
+- Checkpoint/Rollback: Save state, try approaches, rollback instantly
+- Real-time Collaboration: Shared session monitoring
+- Context Preservation: Debugging state persists across iterations
 
 ## Common ML Debugging Scenarios
 
@@ -494,8 +626,8 @@ Start the interactive session now and begin collaborative ML debugging for: $ARG
         with open(commands_dir / "ml-debug.md", "w") as f:
             f.write(ml_debug_content)
         
-        print("✅ Created .claude/commands/interactive.md")
-        print("✅ Created .claude/commands/ml-debug.md")
+        print(Colors.green("Created .claude/commands/interactive.md"))
+        print(Colors.green("Created .claude/commands/ml-debug.md"))
         
         # Create .claude/README.md for project documentation
         readme_content = """# Progressive ML Development - Project Setup
@@ -547,18 +679,18 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
         with open(Path(".claude/README.md"), "w") as f:
             f.write(readme_content)
         
-        print("✅ Created .claude/README.md")
+        print(Colors.green("Created .claude/README.md"))
         print()
-        print("🎉 Installation complete!")
-        print("📁 Current project now has Progressive ML Development slash commands")
+        print(Colors.green("Installation complete!"))
+        print(Colors.blue("Current project now has Progressive ML Development slash commands"))
         print()
-        print("🎯 Available commands:")
+        print(Colors.yellow("Available commands:"))
         print("  /interactive start           # Start persistent session")
         print("  /interactive status          # Check session")
         print("  /ml-debug \"issue\"           # Debug specific ML problem")
         print()
-        print("📚 Documentation: .claude/README.md")
-        print("🔧 Global system: ~/.claude/available-commands.md")
+        print(Colors.yellow("Documentation: .claude/README.md"))
+        print(Colors.yellow("Global system: ~/.claude/available-commands.md"))
         
         return True
 
@@ -603,7 +735,7 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
         
     def test(self):
         """Run built-in tests"""
-        print("🧪 Running built-in tests...")
+        print(Colors.blue("Running built-in tests..."))
         print("=" * 40)
         
         tests_passed = 0
@@ -612,14 +744,14 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
         # Test 1: tmux availability
         total_tests += 1
         if shutil.which("tmux"):
-            print("✅ Test 1: tmux available")
+            print(Colors.green("Test 1: tmux available"))
             tests_passed += 1
         else:
-            print("❌ Test 1: tmux not found")
+            print(Colors.red("Test 1: tmux not found"))
         
         # Test 2: Session lifecycle
         total_tests += 1
-        print("🔄 Test 2: Session lifecycle...")
+        print(Colors.blue("Test 2: Session lifecycle..."))
         
         # Clean start
         if self._session_exists():
@@ -636,35 +768,35 @@ This transforms ML debugging from "restart and hope" to "explore and iterate".
                 # Read output
                 output = self.read(20)
                 if "test_success" in output:
-                    print("✅ Test 2: Session lifecycle works")
+                    print(Colors.green("Test 2: Session lifecycle works"))
                     tests_passed += 1
                 else:
-                    print("❌ Test 2: Variable not found in output")
+                    print(Colors.red("Test 2: Variable not found in output"))
             else:
-                print("❌ Test 2: Failed to send command")
+                print(Colors.red("Test 2: Failed to send command"))
             
             # Clean up
             self.stop()
         else:
-            print("❌ Test 2: Failed to start session")
+            print(Colors.red("Test 2: Failed to start session"))
         
         # Test 3: Config files
         total_tests += 1
         commands_file = self.config_dir / "available-commands.md"
         if commands_file.exists():
-            print("✅ Test 3: Config files exist")
+            print(Colors.green("Test 3: Config files exist"))
             tests_passed += 1
         else:
-            print("❌ Test 3: Config files missing")
+            print(Colors.red("Test 3: Config files missing"))
         
         print("\n" + "=" * 40)
-        print(f"📊 Tests passed: {tests_passed}/{total_tests}")
+        print(Colors.yellow(f"Tests passed: {tests_passed}/{total_tests}"))
         
         if tests_passed == total_tests:
-            print("🎉 All tests passed! System is ready.")
+            print(Colors.green("All tests passed! System is ready."))
             return True
         else:
-            print("⚠️  Some tests failed. Run 'claude-repl setup' if needed.")
+            print(Colors.yellow("Some tests failed. Run 'claude-repl setup' if needed."))
             return False
 
 def main():
